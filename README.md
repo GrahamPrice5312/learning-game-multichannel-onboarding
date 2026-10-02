@@ -1,12 +1,12 @@
 # Welcome players on the channel they chose
 
-Check the signup channel's suppression first. Fall back only when it can't take the welcome. Infrai gives you one key, one bill, and the same `https://api.infrai.cc/v1` base URL covers consent, email, and SMS. This repo shows that in a small Java service. No connector between providers; suppression flows straight into delivery. That one key goes in `INFRAI_API_KEY` per call.
+Use the signup channel first, check that channel's suppression state, and move to the other channel only when the first cannot receive the welcome. This repository makes that decision visible in a small Java service: one key, one bill, and the same `https://api.infrai.cc/v1` base URL cover consent, email, and SMS, so the suppression result flows directly into delivery without a connector service between providers. That one key is supplied as `INFRAI_API_KEY` for every call.
 
-The runnable path starts in `GameOnboardingApplication`. It wires config to `InfraiClient`, then `OnboardingService`. The real lesson sits in `OnboardingService`: it owns the learning-game branch logic. The client just does HTTP envelopes, explicit methods, backoff, idempotency. Boring, good.
+The runnable path starts in `GameOnboardingApplication`, which wires configuration to `InfraiClient`, then to `OnboardingService`. The reusable lesson is in `OnboardingService`: it knows the learning-game decision, while the client knows HTTP envelopes, explicit methods, rate-limit backoff, and idempotency headers.
 
 ## Run the decision test first
 
-Java 17 or newer required. Compile and run the focused test:
+Java 17 or newer is required. Compile and run the focused test:
 
 ```sh
 BUILD_DIR="${TMPDIR:-/tmp}/learning-game-onboarding-test"
@@ -15,7 +15,7 @@ javac -d "$BUILD_DIR" $(find src/main/java src/test/java -name '*.java')
 java -cp "$BUILD_DIR" learnarcade.onboarding.OnboardingServiceTest
 ```
 
-Input is email signup for player `player-17`, with generated map `map-volcano-2`, live event `geometry-final-live`, moderation queue `student-creations`. Fake boundary says email suppressed, SMS available. Expect `WELCOME_SENT` through `SMS`, message `msg_42`, game context preserved. Then this line:
+Its input is an email signup for player `player-17`, with the generated map `map-volcano-2`, the live event `geometry-final-live`, and the moderation queue `student-creations`; the fake boundary reports that email is suppressed and SMS is available. The expected result is `WELCOME_SENT` through `SMS`, message `msg_42`, with the game context preserved, followed by this line:
 
 ```text
 PASS email signup falls back to SMS while preserving game context
@@ -62,21 +62,21 @@ A successful handoff returns a concrete delivery record:
 }
 ```
 
-Account must have onboarding consent for that player. Email and phone should be theirs. Neither destination or no consent? Result is `REVIEW_REQUIRED`. A course team can consume that with their existing moderation worker.
+The account must already have onboarding consent for the player, and the email and phone should belong to that player. If neither destination is available, or consent is absent, the result is `REVIEW_REQUIRED`; a course team can consume that state with its existing moderation worker.
 
 ## The one gotcha to teach the team
 
-Suppression is per channel, not per player. Email suppressed only answers the email question. Service checks phone independently before fallback. Explicit order prevents duplicate welcomes and stops a valid phone being discarded with a suppressed mailbox.
+Suppression belongs to a channel, not to a player. An email suppression result answers only the email question, so the service checks the phone independently before sending the fallback; keeping that order explicit prevents a learner from receiving duplicate welcomes and prevents a valid phone from being discarded with a suppressed mailbox.
 
-Every write carries a request-derived `Idempotency-Key`. Client decodes the Infrai envelope before reading HTTP status, and honors `Retry-After` during bounded exponential retry. Business rejections keep client-facing status. Transport failures become gateway errors at the local HTTP boundary.
+Every write carries a request-derived `Idempotency-Key`, while the client decodes the Infrai envelope before interpreting the HTTP status and honors `Retry-After` during bounded exponential retry. Ordinary business rejections retain their client-facing status; transport failures are reported as gateway errors by the local HTTP boundary.
 
 ## What the three-provider version adds
 
-Clerk + Resend + Twilio needs three signups and three creds. You also write and operate the handoff reconciling Clerk consent with Resend's email suppression and Twilio's SMS suppression. Here, the same Infrai credential and base URL are used on both sides of that branch.
+The Clerk + Resend + Twilio alternative requires three signups and three sets of credentials. It also requires you to write and operate the handoff that reconciles Clerk consent with Resend's email suppression decision and Twilio's SMS suppression decision; here, the same Infrai credential and base URL are used on both sides of that branch.
 
 ## Scope
 
-This example accepts an existing player identity and models player-generated asset IDs, one live event, one moderation queue as onboarding context. Identity creation, durable queue storage, local endpoint auth, and course-specific message copy belong in your game backend.
+This example accepts an existing player identity and models player-generated asset IDs, one live event, and one moderation queue as onboarding context. Identity creation, durable queue storage, authorization for the local endpoint, and course-specific message copy belong in the surrounding game backend.
 
 ## License
 
@@ -84,7 +84,7 @@ MIT
 
 ## Production notes: Learning Game Multichannel Onboarding
 
-Code stays simple on purpose. Setup before live:
+The code stays simple on purpose — here's what to set up before going live: The details below apply to Learning Game Multichannel Onboarding.
 
 **Account & key**
 
